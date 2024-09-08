@@ -8,6 +8,8 @@
 #include <sstream>
 #include <map>
 #include <functional>
+#include <time.h>
+#include<cstdarg>
 namespace MindbniM
 {
     class Logger;
@@ -16,13 +18,14 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<LogEvent>;
-        LogEvent();
+        LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
+                 uint32_t threadId, uint32_t fiberId, uint64_t time,...);
+        LogEvent() {};
 
         std::string _file;               // 文件名
         int _line;                       // 行号
-        uint32_t _elapse;                // 程序启动的毫秒数
-        uint32_t _threadId;              // 线程id
-        uint32_t _fiberId;               // 协程id
+        uint32_t _threadId = 0;          // 线程id
+        uint32_t _fiberId = 0;           // 协程id
         uint64_t _time;                  // 时间戳
         std::string _message;            // 消息
         std::shared_ptr<Logger> _logger; // 所属日志器
@@ -66,7 +69,6 @@ namespace MindbniM
     // 格式："%d{%Y-%m-%d %H:%M:%S}%T%t%T%F%T[%p]%T[%c]%T%f:%l%T%m%n"
     //*  %m 消息
     //*  %p 日志级别
-    //*  %r 累计毫秒数
     //*  %c 日志名称
     //*  %t 线程id
     //*  %n 换行
@@ -81,7 +83,7 @@ namespace MindbniM
     public:
         using ptr = std::shared_ptr<LogFormatter>;
         // 对给出的日志格式初始化m_items
-        LogFormatter(const std::string &formatstr) : m_format(formatstr) { init(); }
+        LogFormatter(const std::string &formatstr = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m") : m_format(formatstr) { init(); }
         // 上层总解析
         std::string format(LogLevel::Level level, LogEvent::ptr event);
         void init();
@@ -104,8 +106,12 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<LogAppend>;
-        virtual ~LogAppend();
-        virtual void log(LogLevel::Level level, LogEvent::ptr event);
+        LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m")
+            : m_level(level), m_format(std::make_shared<LogFormatter>(format))
+        {
+        }
+        virtual ~LogAppend() {}
+        virtual void log(LogLevel::Level level, LogEvent::ptr event) {}
 
     protected:
         LogLevel::Level m_level;
@@ -115,6 +121,7 @@ namespace MindbniM
     class Logger
     {
     public:
+        using ptr = std::shared_ptr<Logger>;
         Logger(const std::string &name = "root");
         void log(LogLevel::Level level, LogEvent::ptr event);
         void debug(LogEvent::ptr event);
@@ -130,21 +137,53 @@ namespace MindbniM
 
     private:
         std::string m_name;
-        LogLevel::Level m_level;
+        LogLevel::Level m_level = LogLevel::Level::DEBUG;
         std::list<LogAppend::ptr> m_appends;
     };
+    // 日志管理器
+    class LoggerManager
+    {
+    public:
+        using ptr = std::shared_ptr<LoggerManager>;
+        static LoggerManager *GetInstance()
+        {
+            LoggerManager LogMa;
+            return &LogMa;
+        }
+        Logger::ptr get_root() { return m_root; }
+        Logger::ptr get_logger(const std::string &name)
+        {
+            auto it = m_loggers.find(name);
+            if (it == m_loggers.end())
+            {
+                m_loggers[name] = std::make_shared<Logger>(name);
+                return m_loggers[name];
+            }
+            else
+                return m_loggers[name];
+        }
 
+    private:
+        LoggerManager() { m_root = std::make_shared<Logger>("root"); }
+        LoggerManager(const LoggerManager &) = delete;
+        void operator=(const LoggerManager &) = delete;
+        Logger::ptr m_root;
+        std::map<std::string, Logger::ptr> m_loggers;
+    };
     class Stdout_LogAppend : public LogAppend
     {
     public:
         using ptr = std::shared_ptr<Stdout_LogAppend>;
+        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m") : LogAppend(level, format)
+        {
+        }
         virtual void log(LogLevel::Level levle, LogEvent::ptr event) override;
     };
     class Fileout_LogAppend : public LogAppend
     {
     public:
         using ptr = std::shared_ptr<Fileout_LogAppend>;
-        Fileout_LogAppend(const std::string &filename);
+        Fileout_LogAppend(const std::string &filename, LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m");
         virtual void log(LogLevel::Level level, LogEvent::ptr evnet) override;
         bool reopen();
 
@@ -190,15 +229,6 @@ namespace MindbniM
             os << event->_file;
         }
     };
-    class ElapseFormatItem : public LogFormatter::FormatItem
-    {
-    public:
-        ElapseFormatItem(const std::string &str = "") {}
-        virtual void format(std::ostringstream &os, LogLevel::Level level, LogEvent::ptr event) override
-        {
-            os << event->_elapse;
-        }
-    };
     class ThreadIdFormatItem : public LogFormatter::FormatItem
     {
     public:
@@ -232,6 +262,45 @@ namespace MindbniM
         DateFormatItem(const std::string format = "%Y-%m-%d %H:%M:%S") : m_format(format) {}
         virtual void format(std::ostringstream &os, LogLevel::Level level, LogEvent::ptr event) override
         {
+            struct tm tm;
+            time_t time = event->_time;
+            localtime_r(&time, &tm);
+            std::string str;
+            for (int i = 0; i < m_format.size(); ++i)
+            {
+                if (m_format[i] != '%')
+                    str.push_back(m_format[i]);
+                else if (i + 1 < m_format.size())
+                {
+                    switch (m_format[i + 1])
+                    {
+                    case 'Y':
+                        str += std::to_string(tm.tm_year + 1900);
+                        break;
+                    case 'm':
+                        str += (tm.tm_mon + 1 < 10 ? "0" : "") + std::to_string(tm.tm_mon + 1);
+                        break;
+                    case 'd':
+                        str += (tm.tm_mday < 10 ? "0" : "") + std::to_string(tm.tm_mday);
+                        break;
+                    case 'H':
+                        str += (tm.tm_hour < 10 ? "0" : "") + std::to_string(tm.tm_hour);
+                        break;
+                    case 'M':
+                        str += (tm.tm_min < 10 ? "0" : "") + std::to_string(tm.tm_min);
+                        break;
+                    case 'S':
+                        str += (tm.tm_sec < 10 ? "0" : "") + std::to_string(tm.tm_sec);
+                        break;
+                    default:
+                        str.push_back('%');
+                        str.push_back(m_format[i + 1]);
+                        break;
+                    }
+                    ++i;
+                }
+            }
+            os << str;
         }
 
     private:
@@ -272,7 +341,14 @@ namespace MindbniM
         std::string m_str;
     };
 
-    Logger::Logger(const std::string &name = "root") : m_name(name)
+
+    LogEvent::LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
+                 uint32_t threadId, uint32_t fiberId, uint64_t time,...):
+                 _logger(logger),_file(file),_line(line),_threadId(threadId),_fiberId(fiberId),_time(time)
+    {
+        
+    }
+    Logger::Logger(const std::string &name) : m_name(name)
     {
     }
     void Logger::log(LogLevel::Level level, LogEvent::ptr event)
@@ -327,7 +403,7 @@ namespace MindbniM
             std::cout << m_format->format(level, event);
         }
     }
-    Fileout_LogAppend::Fileout_LogAppend(const std::string &filename) : m_filename(filename)
+    Fileout_LogAppend::Fileout_LogAppend(const std::string &filename, LogLevel::Level level, const std::string &format) : m_filename(filename), LogAppend(level, format)
     {
         m_file.open(filename);
     }
@@ -357,100 +433,126 @@ namespace MindbniM
         }
         return os.str();
     }
+    // 默认格式 : "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m"
+    // 可选格式:
+    //*  %m 消息
+    //*  %p 日志级别
+    //*  %c 日志名称
+    //*  %t 线程id
+    //*  %n 换行
+    //*  %d 时间
+    //*  %f 文件名
+    //*  %l 行号
+    //*  %T 制表符
+    //*  %F 协程id
     void LogFormatter::init()
     {
         std::vector<std::tuple<std::string, std::string, int>> vec;
         std::string nstr;
-        for (int i = 0; i < m_format.size(); ++i)
+        for (size_t i = 0; i < m_format.size(); ++i)
         {
             if (m_format[i] != '%')
             {
-                nstr.push_back(m_format[i]);
+                nstr.append(1, m_format[i]);
                 continue;
             }
-            if ((i + 1 < m_format.size()) && m_format[i + 1] == '%')
+
+            if ((i + 1) < m_format.size())
             {
-                nstr.push_back('%');
-                continue;
-            }
-            size_t n = i + 1;
-            std::string str;
-            std::string fmt;
-            int flag = 0;
-            int flag_begin = 0;
-            while (n < m_format.size())
-            {
-                if (flag == 0 && !isalpha(m_format[i]) && m_format[i] != '{' && m_format[i] != '}')
+                if (m_format[i + 1] == '%')
                 {
-                    str = m_format.substr(i + 1, n - i - 1);
-                    break;
+                    nstr.append(1, '%');
+                    continue;
                 }
-                if (flag == 0)
+
+                size_t n = i + 1;
+                int fmt_status = 0;
+                size_t fmt_begin = 0;
+
+                std::string str;
+                std::string fmt;
+
+                while (n < m_format.size())
                 {
-                    if (m_format[n] == '{')
+                    if (!fmt_status && (!isalpha(m_format[n]) && m_format[n] != '{' && m_format[n] != '}'))
                     {
                         str = m_format.substr(i + 1, n - i - 1);
-                        flag = 1;
-                        flag_begin = n;
-                        ++n;
-                        continue;
-                    }
-                }
-                else if (flag == 1)
-                {
-                    if (m_format[n] == '}')
-                    {
-                        fmt = m_format.substr(flag_begin + 1, n - flag_begin - 1);
-                        flag = 0;
-                        ++n;
                         break;
                     }
-                }
-                ++n;
-                if (n == m_format.size())
-                {
-                    if (str.empty())
-                    {
-                        str = m_format.substr(i + 1);
+                    if (fmt_status == 0)
+                    { // 开始解析时间格式
+                        if (m_format[n] == '{')
+                        {
+                            str = m_format.substr(i + 1, n - i - 1); // str = "d"
+                            fmt_status = 1;
+                            fmt_begin = n;
+                            ++n;
+                            continue;
+                        }
+                    }
+                    else if (fmt_status == 1)
+                    { // 结束解析时间格式
+                        if (m_format[n] == '}')
+                        {
+                            // fmt = %Y-%m-%d %H:%M:%S
+                            fmt = m_format.substr(fmt_begin + 1, n - fmt_begin - 1);
+                            fmt_status = 0;
+                            ++n;
+                            break;
+                        }
+                    }
+                    ++n;
+                    if (n == m_format.size())
+                    { // 最后一个字符
+                        if (str.empty())
+                        {
+                            str = m_format.substr(i + 1);
+                        }
                     }
                 }
-            }
-            if (flag == 0)
-            {
-                if (!nstr.empty())
+                if (fmt_status == 0)
                 {
-                    vec.emplace_back(nstr, "", 0);
-                    nstr.clear();
+                    if (!nstr.empty())
+                    {
+                        vec.push_back(std::make_tuple(nstr, std::string(), 0)); // 将[ ]放入， type为0
+                        nstr.clear();
+                    }
+                    vec.push_back(std::make_tuple(str, fmt, 1)); //(e.g.) ("d", %Y-%m-%d %H:%M:%S, 1) type为1
+                    i = n - 1;                                   // 跳过已解析的字符，让i指向当前处理的字符，下个for循环会++i处理下个字符
                 }
-                vec.emplace_back(str, fmt, 1);
-                i = n - 1;
-            }
-            else if (flag == 1)
-            {
-                std::cout << "日志格式错误: " << m_format << " - " << m_format.substr(i) << std::endl;
-                m_error = true;
-                vec.push_back(std::make_tuple("<<pattern_error>>", fmt, 0));
+                else if (fmt_status == 1)
+                {
+                    std::cout << "Pattern parde error: " << m_format << " - " << m_format.substr(i) << std::endl;
+                    m_error = true;
+                    vec.push_back(std::make_tuple("<<pattern_error>>", fmt, 0));
+                }
             }
         }
+
         if (!nstr.empty())
         {
-            vec.emplace_back(nstr, "", 0);
+            vec.push_back(std::make_tuple(nstr, "", 0)); //(e.g.) 最后一个字符为[ ] :
         }
-        static std::map<std::string, std::function<FormatItem::ptr(const std::string &str)>> s_format_hash = {
-#define XX(str, c) {#str, [](const std::string &fmt) { return FormatItem::ptr(new c(fmt)); }}
+
+        // map类型为<string, cb>, string为相应的日志格式， cb返回相应的FormatItem智能指针
+        static std::map<std::string, std::function<FormatItem::ptr(const std::string &fmt)>> s_format_items = {
+#define XX(str, C) \
+    {#str, [](const std::string &fmt) { return FormatItem::ptr(new C(fmt)); }}
+
             XX(m, MessageFormatItem),  // m:消息
             XX(p, LevelFormatItem),    // p:日志级别
-            XX(r, ElapseFormatItem),   // r:累计毫秒数
             XX(c, NameFormatItem),     // c:日志名称
             XX(t, ThreadIdFormatItem), // t:线程id
+            XX(n, NewLineFormatItem),  // n:换行
             XX(d, DateFormatItem),     // d:时间
             XX(f, FilenameFormatItem), // f:文件名
             XX(l, LineFormatItem),     // l:行号
             XX(T, TabFormatItem),      // T:Tab
             XX(F, FiberIdFormatItem),  // F:协程id
-            XX(n, NewLineFormatItem),  // n:换行
+
 #undef XX
         };
+
         for (auto &i : vec)
         {
             if (std::get<2>(i) == 0)
@@ -459,18 +561,29 @@ namespace MindbniM
             }
             else
             {
-                auto it = s_format_hash.find(std::get<0>(i));
-                if (it == s_format_hash.end())
-                { // 若没有找到则用StringFormatItem显示错误信息 并设置错误标志位
+                auto it = s_format_items.find(std::get<0>(i));
+                if (it == s_format_items.end())
+                {
                     m_items.push_back(FormatItem::ptr(new StringFormatItem("<<error_format %" + std::get<0>(i) + ">>")));
                     m_error = true;
                 }
                 else
-                { // 返回相应格式的FormatItem，其中std::get<1>(i)作为cb的参数
+                {
                     m_items.push_back(it->second(std::get<1>(i)));
                 }
             }
+            // std::cout<<std::get<0>(i)<<" "<<std::get<1>(i)<<" "<<std::get<2>(i)<<std::endl;
         }
     }
-
+#define LOG_ROOT() LoggerManager::GetInstance()->get_root()
+#define LOG_NAME(name) LoggerManager::GetInstance()->get_name(name)
+#define STDOUT_APPEND(level, format) std::make_shared<Stdout_LogAppend>(level, format)
+#define STDOUT_APPEND_DEFAULT(level) std::make_shared<Stdout_LogAppend>()
+#define LOG_ROOT_ADD_STDOUT_APPEND_DEFAULT() LOG_ROOT()->addAppend(STDOUT_APPEND_DEFAULT())
+#define LOG_ROOT_ADD_STDOUT_APPEND(level, format) LOG_ROOT()->addAppend(STDOUT_APPEND(level, format))
+#define FILEOUT_APPEND(filename, level, format) std::make_shared_<Fileout_LogAppend>(filename, level, format)
+#define LOG_ROOT_ADD_FILEOUT_APPEND(filename, level,format) LOG_ROOT()->addAppend(FILEOUT_APPEND(filename,level,format))
+#define LOG_NAME_ADD_STDOUT_APPEND_DEFAULT(name) LOG_NAME(name)->addAppend(STDOUT_APPEND_DEFAULT())
+#define LOG_NAME_ADD_STDOUT_APPEND(name,level,format) LOG_NAME(name)->addAppend(STDOUT_APPEND(level,format))
+#define LOG_ROOT_INFO(str,...) LOG_ROOT()->info(std::make_shared<LogEvent>())
 }
