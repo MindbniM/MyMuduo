@@ -10,6 +10,9 @@
 #include <functional>
 #include <time.h>
 #include<cstdarg>
+#include<pthread.h>
+#include<cstdio>
+#include<mutex>
 namespace MindbniM
 {
     class Logger;
@@ -19,7 +22,9 @@ namespace MindbniM
     public:
         using ptr = std::shared_ptr<LogEvent>;
         LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
-                 uint32_t threadId, uint32_t fiberId, uint64_t time,...);
+                 uint32_t threadId, uint32_t fiberId, uint64_t time,const char* str,...);
+        LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
+                 uint32_t threadId, uint32_t fiberId, uint64_t time,const std::string& message);
         LogEvent() {};
 
         std::string _file;               // 文件名
@@ -29,7 +34,10 @@ namespace MindbniM
         uint64_t _time;                  // 时间戳
         std::string _message;            // 消息
         std::shared_ptr<Logger> _logger; // 所属日志器
+
+        static int s_mess_maxlen;       //一条日志信息最大字符数
     };
+    int LogEvent::s_mess_maxlen=1024;
     // 日志等级
     class LogLevel
     {
@@ -83,7 +91,7 @@ namespace MindbniM
     public:
         using ptr = std::shared_ptr<LogFormatter>;
         // 对给出的日志格式初始化m_items
-        LogFormatter(const std::string &formatstr = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m") : m_format(formatstr) { init(); }
+        LogFormatter(const std::string &formatstr = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n") : m_format(formatstr) { init(); }
         // 上层总解析
         std::string format(LogLevel::Level level, LogEvent::ptr event);
         void init();
@@ -106,7 +114,7 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<LogAppend>;
-        LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m")
+        LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n")
             : m_level(level), m_format(std::make_shared<LogFormatter>(format))
         {
         }
@@ -147,20 +155,25 @@ namespace MindbniM
         using ptr = std::shared_ptr<LoggerManager>;
         static LoggerManager *GetInstance()
         {
-            LoggerManager LogMa;
+            static LoggerManager LogMa;
             return &LogMa;
         }
         Logger::ptr get_root() { return m_root; }
         Logger::ptr get_logger(const std::string &name)
         {
+            m_mutex.lock();
             auto it = m_loggers.find(name);
             if (it == m_loggers.end())
             {
                 m_loggers[name] = std::make_shared<Logger>(name);
+                m_mutex.unlock();
                 return m_loggers[name];
             }
             else
+            {
+                m_mutex.unlock();
                 return m_loggers[name];
+            }
         }
 
     private:
@@ -169,27 +182,29 @@ namespace MindbniM
         void operator=(const LoggerManager &) = delete;
         Logger::ptr m_root;
         std::map<std::string, Logger::ptr> m_loggers;
+        std::mutex m_mutex;
     };
     class Stdout_LogAppend : public LogAppend
     {
     public:
         using ptr = std::shared_ptr<Stdout_LogAppend>;
-        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m") : LogAppend(level, format)
-        {
-        }
+        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n") : LogAppend(level, format){}
         virtual void log(LogLevel::Level levle, LogEvent::ptr event) override;
+    private:
+        std::mutex m_mutex;
     };
     class Fileout_LogAppend : public LogAppend
     {
     public:
         using ptr = std::shared_ptr<Fileout_LogAppend>;
-        Fileout_LogAppend(const std::string &filename, LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m");
+        Fileout_LogAppend(const std::string &filename, LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "%n");
         virtual void log(LogLevel::Level level, LogEvent::ptr evnet) override;
         bool reopen();
 
     private:
         std::string m_filename;
         std::ofstream m_file;
+        std::mutex m_mutex;
     };
 
     class MessageFormatItem : public LogFormatter::FormatItem
@@ -343,10 +358,19 @@ namespace MindbniM
 
 
     LogEvent::LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
-                 uint32_t threadId, uint32_t fiberId, uint64_t time,...):
+                 uint32_t threadId, uint32_t fiberId, uint64_t time,const std::string& message):
+                 _logger(logger),_file(file),_line(line),_threadId(threadId),_fiberId(fiberId),_time(time),_message(message)
+    {}
+    LogEvent::LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
+                 uint32_t threadId, uint32_t fiberId, uint64_t time,const char* str,...):
                  _logger(logger),_file(file),_line(line),_threadId(threadId),_fiberId(fiberId),_time(time)
     {
-        
+        va_list va;
+        va_start(va,str);
+        char buff[s_mess_maxlen]={0};
+        vsnprintf(buff,s_mess_maxlen,str,va);
+        _message=buff;
+        va_end(va);
     }
     Logger::Logger(const std::string &name) : m_name(name)
     {
@@ -400,7 +424,10 @@ namespace MindbniM
     {
         if (level >= m_level)
         {
-            std::cout << m_format->format(level, event);
+            std::string str=m_format->format(level, event);
+            m_mutex.lock();
+            std::cout<<str;
+            m_mutex.unlock();
         }
     }
     Fileout_LogAppend::Fileout_LogAppend(const std::string &filename, LogLevel::Level level, const std::string &format) : m_filename(filename), LogAppend(level, format)
@@ -411,7 +438,10 @@ namespace MindbniM
     {
         if (level >= m_level)
         {
-            m_file << m_format->format(level, event);
+            std::string str=m_format->format(level, event);
+            m_mutex.lock();
+            m_file<<str;
+            m_mutex.unlock();
         }
     }
     bool Fileout_LogAppend::reopen()
@@ -433,7 +463,7 @@ namespace MindbniM
         }
         return os.str();
     }
-    // 默认格式 : "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m"
+    // 默认格式 : "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n"
     // 可选格式:
     //*  %m 消息
     //*  %p 日志级别
@@ -534,7 +564,6 @@ namespace MindbniM
             vec.push_back(std::make_tuple(nstr, "", 0)); //(e.g.) 最后一个字符为[ ] :
         }
 
-        // map类型为<string, cb>, string为相应的日志格式， cb返回相应的FormatItem智能指针
         static std::map<std::string, std::function<FormatItem::ptr(const std::string &fmt)>> s_format_items = {
 #define XX(str, C) \
     {#str, [](const std::string &fmt) { return FormatItem::ptr(new C(fmt)); }}
@@ -577,13 +606,29 @@ namespace MindbniM
     }
 #define LOG_ROOT() LoggerManager::GetInstance()->get_root()
 #define LOG_NAME(name) LoggerManager::GetInstance()->get_name(name)
+
+#define LOG_EVENT(logger,str,...) std::make_shared<LogEvent>(logger,__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__)
+
 #define STDOUT_APPEND(level, format) std::make_shared<Stdout_LogAppend>(level, format)
 #define STDOUT_APPEND_DEFAULT(level) std::make_shared<Stdout_LogAppend>()
+
 #define LOG_ROOT_ADD_STDOUT_APPEND_DEFAULT() LOG_ROOT()->addAppend(STDOUT_APPEND_DEFAULT())
 #define LOG_ROOT_ADD_STDOUT_APPEND(level, format) LOG_ROOT()->addAppend(STDOUT_APPEND(level, format))
 #define FILEOUT_APPEND(filename, level, format) std::make_shared_<Fileout_LogAppend>(filename, level, format)
 #define LOG_ROOT_ADD_FILEOUT_APPEND(filename, level,format) LOG_ROOT()->addAppend(FILEOUT_APPEND(filename,level,format))
 #define LOG_NAME_ADD_STDOUT_APPEND_DEFAULT(name) LOG_NAME(name)->addAppend(STDOUT_APPEND_DEFAULT())
 #define LOG_NAME_ADD_STDOUT_APPEND(name,level,format) LOG_NAME(name)->addAppend(STDOUT_APPEND(level,format))
-#define LOG_ROOT_INFO(str,...) LOG_ROOT()->info(std::make_shared<LogEvent>())
+
+#define LOG_ROOT_DEBUG(str,...) LOG_ROOT()->debug(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_ROOT_INFO(str,...) LOG_ROOT()->info(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_ROOT_WARNING(str,...) LOG_ROOT()->warning(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_ROOT_ERROR(str,...) LOG_ROOT()->error(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_ROOT_FATAL(str,...) LOG_ROOT()->fatal(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+
+#define LOG_NAME_INFO(name,str,...) LOG_NAME(name)->info(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_NAME_DEBUG(name,str,...) LOG_NAME(name)->debug(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_NAME_WARNING(name,str,...) LOG_NAME(name)->warning(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_NAME_ERROR(name,str,...) LOG_NAME(name)->error(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_NAME_FATAL(name,str,...) LOG_NAME(name)->fatal(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+
 }
