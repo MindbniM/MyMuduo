@@ -13,6 +13,7 @@
 #include<pthread.h>
 #include<cstdio>
 #include<mutex>
+#include"BlockQueue.hpp"
 namespace MindbniM
 {
     class Logger;
@@ -85,13 +86,13 @@ namespace MindbniM
     //*  %l 行号
     //*  %T 制表符
     //*  %F 协程id
-
+    const std::string DEFAULT_FORMAT="[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n";
     class LogFormatter
     {
     public:
         using ptr = std::shared_ptr<LogFormatter>;
         // 对给出的日志格式初始化m_items
-        LogFormatter(const std::string &formatstr = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n") : m_format(formatstr) { init(); }
+        LogFormatter(const std::string &formatstr =DEFAULT_FORMAT ) : m_format(formatstr) { init(); }
         // 上层总解析
         std::string format(LogLevel::Level level, LogEvent::ptr event);
         void init();
@@ -114,12 +115,12 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<LogAppend>;
-        LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n")
+        LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT)
             : m_level(level), m_format(std::make_shared<LogFormatter>(format))
         {
         }
         virtual ~LogAppend() {}
-        virtual void log(LogLevel::Level level, LogEvent::ptr event) {}
+        virtual void log(LogLevel::Level level, LogEvent::ptr event)=0;
 
     protected:
         LogLevel::Level m_level;
@@ -188,7 +189,7 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<Stdout_LogAppend>;
-        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n") : LogAppend(level, format){}
+        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT) : LogAppend(level, format){}
         virtual void log(LogLevel::Level levle, LogEvent::ptr event) override;
     private:
         std::mutex m_mutex;
@@ -197,7 +198,7 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<Fileout_LogAppend>;
-        Fileout_LogAppend(const std::string &filename, LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = "%n");
+        Fileout_LogAppend(const std::string &filename, LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT);
         virtual void log(LogLevel::Level level, LogEvent::ptr evnet) override;
         bool reopen();
 
@@ -206,7 +207,27 @@ namespace MindbniM
         std::ofstream m_file;
         std::mutex m_mutex;
     };
+    class Asyn_Stdout_LogAppend : public LogAppend
+    {
+    public:
+        using ptr=std::shared_ptr<Asyn_Stdout_LogAppend>;
+        Asyn_Stdout_LogAppend(LogLevel::Level level=LogLevel::Level::DEBUG,const std::string& format=DEFAULT_FORMAT) : LogAppend(level,format)
+        {}
+        virtual void log(LogLevel::Level level,LogEvent::ptr event)override;
+    };
+    class Asyn_Fileout_LogAppend : public LogAppend
+    {
+    public:
+        using ptr = std::shared_ptr<Fileout_LogAppend>;
+        Asyn_Fileout_LogAppend(const std::string &filename, LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT);
+        virtual void log(LogLevel::Level level, LogEvent::ptr evnet) override;
+        bool reopen();
 
+    private:
+        std::string m_filename;
+        std::ofstream m_file;
+        std::mutex m_mutex;
+    };
     class MessageFormatItem : public LogFormatter::FormatItem
     {
     public:
@@ -453,7 +474,39 @@ namespace MindbniM
         m_file.open(m_filename);
         return m_file.is_open();
     }
-
+    Asyn_Fileout_LogAppend::Asyn_Fileout_LogAppend(const std::string &filename, LogLevel::Level level, const std::string &format) : m_filename(filename), LogAppend(level, format)
+    {
+        m_file.open(filename);
+    }
+    void Asyn_Fileout_LogAppend::log(LogLevel::Level level, LogEvent::ptr event)
+    {
+        if (level >= m_level)
+        {
+            std::string str=m_format->format(level, event);
+            blockqueue<task>::GetInstance()->push([str,this]
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_file<<str;
+            });
+        }
+    }
+    bool Asyn_Fileout_LogAppend::reopen()
+    {
+        if (m_file.is_open())
+        {
+            m_file.close();
+        }
+        m_file.open(m_filename);
+        return m_file.is_open();
+    }
+    void Asyn_Stdout_LogAppend::log(LogLevel::Level level,LogEvent::ptr event)
+    {
+        if(level>=m_level) 
+        {
+            std::string str=m_format->format(level,event);
+            blockqueue<task>::GetInstance()->push([=]{std::cout<<str;});
+        }
+    }
     std::string LogFormatter::format(LogLevel::Level level, LogEvent::ptr event)
     {
         std::ostringstream os;
