@@ -1,14 +1,12 @@
-//#include<log/log.hpp>
-//#include<unistd.h>
 #include<iostream>
-#include"buff/buffer.hpp"
+#include"server/Reactor.hpp"
 
 using namespace MindbniM;
 int main()
 {
-    Buffer buff;
-    std::string b="123456";
-    buff.push_back(b.begin(),b.end());
-    std::cout<<buff<<std::endl;;
+    Reactor server;
+    Connect::ptr lis=std::make_shared<Listen>(8848);
+    server.AddConnect(lis);
+    server.start();
     return 0;
 }

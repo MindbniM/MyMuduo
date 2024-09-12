@@ -8,6 +8,7 @@ namespace MindbniM
     class _Buffer
     {
     public:
+        using iterator=typename std::deque<T>::iterator;
         template<class V>
         friend std::ostream &operator<<(std::ostream &o, const _Buffer<V> &buff);
         _Buffer() = default;
@@ -34,6 +35,14 @@ namespace MindbniM
             }
             else
                 m_buff.erase(m_buff.begin(), m_buff.begin() + size);
+        }
+        iterator begin()
+        {
+            return m_buff.begin();
+        }
+        iterator end()
+        {
+            return m_buff.end();
         }
         T &operator[](size_t pos)
         {

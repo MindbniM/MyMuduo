@@ -1,7 +1,6 @@
 #pragma once
 #include"../log/log.hpp"
 #include"Epoll.hpp"
-#include"Connect.hpp"
 #include<string.h>
 namespace MindbniM
 {
@@ -17,11 +16,7 @@ namespace MindbniM
     public:
         void init(uint16_t port);
         void listen(int size=8);
-    };
-    class Listen_Socket : public Tcp_Server_Socket
-    {
-    public:
-        Connect::ptr accept();
+        int fd(){return _fd;}
     };
     class Tcp_Client_Socket : public Socket
     {
@@ -51,6 +46,7 @@ namespace MindbniM
             exit(1);
         }
         LOG_ROOT_INFO("bind success prot:%d",in.sin_port);
+        listen();
     }
     void Tcp_Server_Socket::listen(int size)
     {
@@ -61,17 +57,5 @@ namespace MindbniM
             exit(1);
         }
         LOG_ROOT_INFO("listen success");
-    }
-    Connect::ptr Listen_Socket::accept()
-    {
-        struct sockaddr_in in;
-        socklen_t len=sizeof(in);
-        int fd=::accept(_fd,(struct sockaddr*)&in,&len);
-        if(fd<0)
-        {
-            LOG_ROOT_WARNING("accept error");
-        }
-        LOG_ROOT_INFO("accpet success addr:%s:%d",inet_ntoa(in.sin_addr),ntohl(in.sin_port));
-        return std::make_shared<Connect>(_fd,in.sin_addr.s_addr,in.sin_port);
     }
 }
