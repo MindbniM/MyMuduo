@@ -142,7 +142,7 @@ namespace MindbniM
         _map.erase(_heap.back().id);
         _heap.pop_back();
         size_t nn=adjust_down(i);
-        if(nn==i)
+        if(nn==i&&n!=0)
         {
             nn=adjust_up(i);
         }
@@ -170,7 +170,7 @@ namespace MindbniM
         size_t child=index*2+1;
         while(child<n)
         {
-            if(_heap[child+1]<_heap[child]) child++;
+            if(child+1<n&&_heap[child+1]<_heap[child]) child++;
             if(_heap[child]<_heap[index])
             {
                 swap(child,index);
