@@ -9,11 +9,12 @@
 #include <map>
 #include <functional>
 #include <time.h>
-#include<cstdarg>
-#include<pthread.h>
-#include<cstdio>
-#include<mutex>
-#include"BlockQueue.hpp"
+#include <cstdarg>
+#include <pthread.h>
+#include <cstdio>
+#include <mutex>
+#include "BlockQueue.hpp"
+
 namespace MindbniM
 {
     class Logger;
@@ -23,9 +24,9 @@ namespace MindbniM
     public:
         using ptr = std::shared_ptr<LogEvent>;
         LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
-                 uint32_t threadId, uint32_t fiberId, uint64_t time,const char* str,...);
+                 uint32_t threadId, uint32_t fiberId, uint64_t time, const char *str, ...);
         LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
-                 uint32_t threadId, uint32_t fiberId, uint64_t time,const std::string& message);
+                 uint32_t threadId, uint32_t fiberId, uint64_t time, const std::string &message);
         LogEvent() {};
 
         std::string _file;               // 文件名
@@ -36,9 +37,9 @@ namespace MindbniM
         std::string _message;            // 消息
         std::shared_ptr<Logger> _logger; // 所属日志器
 
-        static int s_mess_maxlen;       //一条日志信息最大字符数
+        static int s_mess_maxlen; // 一条日志信息最大字符数
     };
-    int LogEvent::s_mess_maxlen=1024;
+    int LogEvent::s_mess_maxlen = 1024;
     // 日志等级
     class LogLevel
     {
@@ -86,13 +87,13 @@ namespace MindbniM
     //*  %l 行号
     //*  %T 制表符
     //*  %F 协程id
-    const std::string DEFAULT_FORMAT="[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n";
+    const std::string DEFAULT_FORMAT = "[%p][%d{%Y-%m-%d %H:%M:%S}][%f : %l]%m%n";
     class LogFormatter
     {
     public:
         using ptr = std::shared_ptr<LogFormatter>;
         // 对给出的日志格式初始化m_items
-        LogFormatter(const std::string &formatstr =DEFAULT_FORMAT ) : m_format(formatstr) { init(); }
+        LogFormatter(const std::string &formatstr = DEFAULT_FORMAT) : m_format(formatstr) { init(); }
         // 上层总解析
         std::string format(LogLevel::Level level, LogEvent::ptr event);
         void init();
@@ -120,7 +121,7 @@ namespace MindbniM
         {
         }
         virtual ~LogAppend() {}
-        virtual void log(LogLevel::Level level, LogEvent::ptr event)=0;
+        virtual void log(LogLevel::Level level, LogEvent::ptr event) = 0;
 
     protected:
         LogLevel::Level m_level;
@@ -189,8 +190,9 @@ namespace MindbniM
     {
     public:
         using ptr = std::shared_ptr<Stdout_LogAppend>;
-        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT) : LogAppend(level, format){}
+        Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT) : LogAppend(level, format) {}
         virtual void log(LogLevel::Level levle, LogEvent::ptr event) override;
+
     private:
         std::mutex m_mutex;
     };
@@ -210,10 +212,11 @@ namespace MindbniM
     class Asyn_Stdout_LogAppend : public LogAppend
     {
     public:
-        using ptr=std::shared_ptr<Asyn_Stdout_LogAppend>;
-        Asyn_Stdout_LogAppend(LogLevel::Level level=LogLevel::Level::DEBUG,const std::string& format=DEFAULT_FORMAT) : LogAppend(level,format)
-        {}
-        virtual void log(LogLevel::Level level,LogEvent::ptr event)override;
+        using ptr = std::shared_ptr<Asyn_Stdout_LogAppend>;
+        Asyn_Stdout_LogAppend(LogLevel::Level level = LogLevel::Level::DEBUG, const std::string &format = DEFAULT_FORMAT) : LogAppend(level, format)
+        {
+        }
+        virtual void log(LogLevel::Level level, LogEvent::ptr event) override;
     };
     class Asyn_Fileout_LogAppend : public LogAppend
     {
@@ -377,20 +380,18 @@ namespace MindbniM
         std::string m_str;
     };
 
-
     LogEvent::LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
-                 uint32_t threadId, uint32_t fiberId, uint64_t time,const std::string& message):
-                 _logger(logger),_file(file),_line(line),_threadId(threadId),_fiberId(fiberId),_time(time),_message(message)
-    {}
+                       uint32_t threadId, uint32_t fiberId, uint64_t time, const std::string &message) : _logger(logger), _file(file), _line(line), _threadId(threadId), _fiberId(fiberId), _time(time), _message(message)
+    {
+    }
     LogEvent::LogEvent(std::shared_ptr<Logger> logger, const std::string &file, int line,
-                 uint32_t threadId, uint32_t fiberId, uint64_t time,const char* str,...):
-                 _logger(logger),_file(file),_line(line),_threadId(threadId),_fiberId(fiberId),_time(time)
+                       uint32_t threadId, uint32_t fiberId, uint64_t time, const char *str, ...) : _logger(logger), _file(file), _line(line), _threadId(threadId), _fiberId(fiberId), _time(time)
     {
         va_list va;
-        va_start(va,str);
-        char buff[s_mess_maxlen]={0};
-        vsnprintf(buff,s_mess_maxlen,str,va);
-        _message=buff;
+        va_start(va, str);
+        char buff[s_mess_maxlen] = {0};
+        vsnprintf(buff, s_mess_maxlen, str, va);
+        _message = buff;
         va_end(va);
     }
     Logger::Logger(const std::string &name) : m_name(name)
@@ -445,9 +446,9 @@ namespace MindbniM
     {
         if (level >= m_level)
         {
-            std::string str=m_format->format(level, event);
+            std::string str = m_format->format(level, event);
             m_mutex.lock();
-            std::cout<<str;
+            std::cout << str;
             m_mutex.unlock();
         }
     }
@@ -459,9 +460,9 @@ namespace MindbniM
     {
         if (level >= m_level)
         {
-            std::string str=m_format->format(level, event);
+            std::string str = m_format->format(level, event);
             m_mutex.lock();
-            m_file<<str;
+            m_file << str;
             m_mutex.unlock();
         }
     }
@@ -482,12 +483,11 @@ namespace MindbniM
     {
         if (level >= m_level)
         {
-            std::string str=m_format->format(level, event);
-            blockqueue<task>::GetInstance()->push([str,this]
-            {
+            std::string str = m_format->format(level, event);
+            blockqueue<task>::GetInstance()->push([str, this]
+                                                  {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                m_file<<str;
-            });
+                m_file<<str; });
         }
     }
     bool Asyn_Fileout_LogAppend::reopen()
@@ -499,12 +499,13 @@ namespace MindbniM
         m_file.open(m_filename);
         return m_file.is_open();
     }
-    void Asyn_Stdout_LogAppend::log(LogLevel::Level level,LogEvent::ptr event)
+    void Asyn_Stdout_LogAppend::log(LogLevel::Level level, LogEvent::ptr event)
     {
-        if(level>=m_level) 
+        if (level >= m_level)
         {
-            std::string str=m_format->format(level,event);
-            blockqueue<task>::GetInstance()->push([=]{std::cout<<str;});
+            std::string str = m_format->format(level, event);
+            blockqueue<task>::GetInstance()->push([=]
+                                                  { std::cout << str; });
         }
     }
     std::string LogFormatter::format(LogLevel::Level level, LogEvent::ptr event)
@@ -658,9 +659,9 @@ namespace MindbniM
         }
     }
 #define LOG_ROOT() LoggerManager::GetInstance()->get_root()
-#define LOG_NAME(name) LoggerManager::GetInstance()->get_name(name)
+#define LOG_NAME(name) LoggerManager::GetInstance()->get_logger(name)
 
-#define LOG_EVENT(logger,str,...) std::make_shared<LogEvent>(logger,__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__)
+#define LOG_EVENT(logger, str, ...) std::make_shared<LogEvent>(logger, __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__)
 
 #define STDOUT_APPEND(level, format) std::make_shared<Stdout_LogAppend>(level, format)
 #define STDOUT_APPEND_DEFAULT(level) std::make_shared<Stdout_LogAppend>()
@@ -668,20 +669,52 @@ namespace MindbniM
 #define LOG_ROOT_ADD_STDOUT_APPEND_DEFAULT() LOG_ROOT()->addAppend(STDOUT_APPEND_DEFAULT())
 #define LOG_ROOT_ADD_STDOUT_APPEND(level, format) LOG_ROOT()->addAppend(STDOUT_APPEND(level, format))
 #define FILEOUT_APPEND(filename, level, format) std::make_shared_<Fileout_LogAppend>(filename, level, format)
-#define LOG_ROOT_ADD_FILEOUT_APPEND(filename, level,format) LOG_ROOT()->addAppend(FILEOUT_APPEND(filename,level,format))
-#define LOG_NAME_ADD_STDOUT_APPEND_DEFAULT(name) LOG_NAME(name)->addAppend(STDOUT_APPEND_DEFAULT())
-#define LOG_NAME_ADD_STDOUT_APPEND(name,level,format) LOG_NAME(name)->addAppend(STDOUT_APPEND(level,format))
+#define LOG_ROOT_ADD_FILEOUT_APPEND(filename, level, format) LOG_ROOT()->addAppend(FILEOUT_APPEND(filename, level, format))
+#define LOG_ADD_STDOUT_APPEND_DEFAULT(name) LOG_NAME(name)->addAppend(STDOUT_APPEND_DEFAULT())
+#define LOG_ADD_STDOUT_APPEND(name, level, format) LOG_NAME(name)->addAppend(STDOUT_APPEND(level, format))
+#define CXX_OUT
+#ifdef C_OUT
+#define LOG_ROOT_DEBUG(str, ...) LOG_ROOT()->debug(std::make_shared<LogEvent>(LOG_ROOT(), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_ROOT_INFO(str, ...) LOG_ROOT()->info(std::make_shared<LogEvent>(LOG_ROOT(), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_ROOT_WARNING(str, ...) LOG_ROOT()->warning(std::make_shared<LogEvent>(LOG_ROOT(), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_ROOT_ERROR(str, ...) LOG_ROOT()->error(std::make_shared<LogEvent>(LOG_ROOT(), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_ROOT_FATAL(str, ...) LOG_ROOT()->fatal(std::make_shared<LogEvent>(LOG_ROOT(), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
 
-#define LOG_ROOT_DEBUG(str,...) LOG_ROOT()->debug(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_ROOT_INFO(str,...) LOG_ROOT()->info(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_ROOT_WARNING(str,...) LOG_ROOT()->warning(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_ROOT_ERROR(str,...) LOG_ROOT()->error(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_ROOT_FATAL(str,...) LOG_ROOT()->fatal(std::make_shared<LogEvent>(LOG_ROOT(),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_DEBUG(name, str, ...) LOG_NAME(name)->debug(std::make_shared<LogEvent>(LOG_NAME(name), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_INFO(name, str, ...) LOG_NAME(name)->info(std::make_shared<LogEvent>(LOG_NAME(name), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_WARNING(name, str, ...) LOG_NAME(name)->warning(std::make_shared<LogEvent>(LOG_NAME(name), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_ERROR(name, str, ...) LOG_NAME(name)->error(std::make_shared<LogEvent>(LOG_NAME(name), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#define LOG_FATAL(name, str, ...) LOG_NAME(name)->fatal(std::make_shared<LogEvent>(LOG_NAME(name), __FILE__, __LINE__, pthread_self(), 0, ::time(nullptr), str, ##__VA_ARGS__))
+#endif
+    class LogOut
+    {
+    public:
+        LogOut(Logger::ptr log,LogLevel::Level l,const char* f,int li):_root(log),_level(l),_file(f),line(li)
+        {}
+        std::ostringstream& Out(){return _os;}
+        ~LogOut()
+        {
+            _root->log(_level,std::make_shared<LogEvent>(_root,_file,line,pthread_self(),0,::time(nullptr),_os.str()));
+        }
+    private:
+        std::ostringstream _os;
+        LogLevel::Level _level;
+        Logger::ptr _root;
+        const char* _file;
+        int line;
+    };
+#ifdef CXX_OUT
+#define LOG_DEBUG(name) LogOut(LOG_NAME(name),LogLevel::Level::DEBUG,__FILE__,__LINE__).Out()
+#define LOG_INFO(name) LogOut(LOG_NAME(name),LogLevel::Level::INFO,__FILE__,__LINE__).Out()
+#define LOG_WARNING(name) LogOut(LOG_NAME(name),LogLevel::Level::WARNING,__FILE__,__LINE__).Out()
+#define LOG_ERROR(name) LogOut(LOG_NAME(name),LogLevel::Level::ERROR,__FILE__,__LINE__).Out()
+#define LOG_FATAL(name) LogOut(LOG_NAME(name),LogLevel::Level::FATAL,__FILE__,__LINE__).Out()
 
-#define LOG_NAME_INFO(name,str,...) LOG_NAME(name)->info(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_NAME_DEBUG(name,str,...) LOG_NAME(name)->debug(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_NAME_WARNING(name,str,...) LOG_NAME(name)->warning(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_NAME_ERROR(name,str,...) LOG_NAME(name)->error(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
-#define LOG_NAME_FATAL(name,str,...) LOG_NAME(name)->fatal(std::make_shared<LogEvent>(LOG_NAME(name),__FILE__,__LINE__,pthread_self(),0,::time(nullptr),str,##__VA_ARGS__))
+#define LOG_ROOT_DEBUG LogOut(LOG_ROOT(),LogLevel::Level::DEBUG,__FILE__,__LINE__).Out()
+#define LOG_ROOT_INFO LogOut(LOG_ROOT(),LogLevel::Level::INFO,__FILE__,__LINE__).Out()
+#define LOG_ROOT_WARNING LogOut(LOG_ROOT()),LogLevel::Level::WARNING,__FILE__,__LINE__).Out()
+#define LOG_ROOT_ERROR LogOut(LOG_ROOT(),LogLevel::Level::ERROR,__FILE__,__LINE__).Out()
+#define LOG_ROOT_FATAL LogOut(LOG_ROOT(),LogLevel::Level::FATAL,__FILE__,__LINE__).Out()
+#endif
 
 }
