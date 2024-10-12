@@ -2,6 +2,7 @@
 #include <vector>
 #include<cstring>
 #include <sys/epoll.h>
+#include<unistd.h>
 #include "../log/log.hpp"
 namespace MindbniM
 {
