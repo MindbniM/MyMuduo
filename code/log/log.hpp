@@ -37,9 +37,9 @@ namespace MindbniM
         std::string _message;            // 消息
         std::shared_ptr<Logger> _logger; // 所属日志器
 
-        static int s_mess_maxlen; // 一条日志信息最大字符数
+        static const int s_mess_maxlen; // 一条日志信息最大字符数
     };
-    int LogEvent::s_mess_maxlen = 1024;
+    const int LogEvent::s_mess_maxlen = 1024;
     // 日志等级
     class LogLevel
     {
@@ -436,7 +436,7 @@ namespace MindbniM
         auto it = m_appends.begin();
         while (it != m_appends.end())
         {
-            if (*it = append)
+            if (*it == append)
             {
                 it = m_appends.erase(it);
             }
@@ -712,7 +712,7 @@ namespace MindbniM
 
 #define LOG_ROOT_DEBUG LogOut(LOG_ROOT(),LogLevel::Level::DEBUG,__FILE__,__LINE__).Out()
 #define LOG_ROOT_INFO LogOut(LOG_ROOT(),LogLevel::Level::INFO,__FILE__,__LINE__).Out()
-#define LOG_ROOT_WARNING LogOut(LOG_ROOT()),LogLevel::Level::WARNING,__FILE__,__LINE__).Out()
+#define LOG_ROOT_WARNING LogOut(LOG_ROOT(),LogLevel::Level::WARNING,__FILE__,__LINE__).Out()
 #define LOG_ROOT_ERROR LogOut(LOG_ROOT(),LogLevel::Level::ERROR,__FILE__,__LINE__).Out()
 #define LOG_ROOT_FATAL LogOut(LOG_ROOT(),LogLevel::Level::FATAL,__FILE__,__LINE__).Out()
 #endif

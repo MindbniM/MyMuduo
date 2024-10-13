@@ -5,6 +5,7 @@
 #include<sys/socket.h>
 #include<arpa/inet.h>
 #include<netinet/in.h>
+#include"../log/log.hpp"
 namespace MindbniM
 {
     class InetAddr
@@ -17,7 +18,8 @@ namespace MindbniM
         std::string Ip();
         std::string Addr();
         uint16_t  Port();
-        const struct sockaddr_in* GetSockAddr();
+        const struct sockaddr_in* GetSockAddr()const;
+        void SetSockAddr(struct sockaddr_in addr);
     private:
         struct sockaddr_in m_addr;
     };
@@ -47,8 +49,12 @@ namespace MindbniM
     {
         return ntohs(m_addr.sin_port);
     }
-    const struct sockaddr_in* InetAddr::GetSockAddr()
+    const struct sockaddr_in* InetAddr::GetSockAddr()const
     {
         return &m_addr;
+    }
+    void InetAddr::SetSockAddr(struct sockaddr_in addr)
+    {
+        m_addr=addr;
     }
 }

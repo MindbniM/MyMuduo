@@ -64,7 +64,7 @@ namespace MindbniM
         epoll_ctl(_fd,EPOLL_CTL_DEL,fd,&event);
     }
 
-    int Epoll::Wait(int timeoutMs = -1)
+    int Epoll::Wait(int timeoutMs)
     {
         return epoll_wait(_fd,&_v[0],static_cast<int>(_v.size()),timeoutMs);
     }
