@@ -2,7 +2,7 @@
 #include"InetAddr.hpp"
 #include<netinet/tcp.h>
 #include<unistd.h>
-#include"../nocopyable/nocopyable.hpp"
+#include"../base/nocopyable.hpp"
 namespace MindbniM
 {
     class Socket : public noncopyable

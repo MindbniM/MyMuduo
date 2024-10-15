@@ -9,12 +9,12 @@ namespace MindbniM
     class Epoll
     {
     public:
-        explicit Epoll(int maxEvent = 1024):_fd(epoll_create(128)),_v(maxEvent)
+        explicit Epoll(int maxEvent = 1024):m_epoll_fd(epoll_create(128)),_v(maxEvent)
         {}
 
         ~Epoll()
         {
-            ::close(_fd);
+            ::close(m_epoll_fd);
         }
 
         bool AddFd(int fd, uint32_t events);
@@ -30,7 +30,7 @@ namespace MindbniM
         uint32_t GetEvents(size_t i) const;
 
     private:
-        int _fd;
+        int m_epoll_fd;
         std::vector<struct epoll_event> _v;
     };
 
@@ -41,7 +41,7 @@ namespace MindbniM
         memset(&event,0,sizeof(event));
         event.events=events;
         event.data.fd=fd;
-        epoll_ctl(_fd,EPOLL_CTL_ADD,fd,&event);
+        epoll_ctl(m_epoll_fd,EPOLL_CTL_ADD,fd,&event);
         return true;
     }
 
@@ -52,7 +52,7 @@ namespace MindbniM
         memset(&event,0,sizeof(event));
         event.events=events;
         event.data.fd=fd;
-        epoll_ctl(_fd,EPOLL_CTL_MOD,fd,&event);
+        epoll_ctl(m_epoll_fd,EPOLL_CTL_MOD,fd,&event);
         return true;
     }
 
@@ -61,12 +61,13 @@ namespace MindbniM
         if(fd<0) return false;
         struct epoll_event event;
         memset(&event,0,sizeof(event));
-        epoll_ctl(_fd,EPOLL_CTL_DEL,fd,&event);
+        epoll_ctl(m_epoll_fd,EPOLL_CTL_DEL,fd,&event);
+        return true;
     }
 
     int Epoll::Wait(int timeoutMs)
     {
-        return epoll_wait(_fd,&_v[0],static_cast<int>(_v.size()),timeoutMs);
+        return epoll_wait(m_epoll_fd,&_v[0],static_cast<int>(_v.size()),timeoutMs);
     }
 
     int Epoll::GetEventFd(size_t i) const
