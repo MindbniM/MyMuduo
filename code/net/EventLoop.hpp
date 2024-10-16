@@ -12,8 +12,10 @@ namespace MindbniM
         bool insert(int fd,int events,Channel::func_t read=nullptr, Channel::func_t write =nullptr);
         bool erase(int fd);
         bool mod(int fd,int events,Channel::func_t read=nullptr, Channel::func_t write =nullptr);
-        void Loop(EventLoop* root,int timeout=-1);
+        void Loop(int timeout=-1);
+        void stop();
     private:
+        std::atomic<bool> m_run;
         Epoll m_epoll;
         std::unordered_map<int,Channel::ptr> m_Channels;        
     };
@@ -42,9 +44,14 @@ namespace MindbniM
         if(write!=nullptr)m_Channels[fd]->SetWriteCall(write);
         return true;
     }
-    void EventLoop::Loop(EventLoop* root,int timeout)
+    void EventLoop::stop()
     {
-        while(1)
+        m_run=false;
+    }
+    void EventLoop::Loop(int timeout)
+    {
+       m_run=true;
+        while(m_run)
         {
             int n=m_epoll.Wait(timeout);
             for(int i=0;i<n;i++)
@@ -55,11 +62,11 @@ namespace MindbniM
                 if(event&EPOLLERR) event|=(EPOLLIN|EPOLLOUT);
                 if(event&EPOLLIN&&m_Channels.count(fd))
                 {
-                    m_Channels[fd]->_ReadCall(root);
+                    m_Channels[fd]->_ReadCall();
                 }
                 if(event&EPOLLOUT&&m_Channels.count(fd))
                 {
-                    m_Channels[fd]->_WriteCall(root);
+                    m_Channels[fd]->_WriteCall();
                 }
             }
         }

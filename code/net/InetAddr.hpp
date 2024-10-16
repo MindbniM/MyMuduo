@@ -11,7 +11,8 @@ namespace MindbniM
     class InetAddr
     {
     public:
-        explicit InetAddr(uint16_t port=0);
+        InetAddr()=default;
+        explicit InetAddr(uint16_t port);
         explicit InetAddr(const struct sockaddr_in& addr):m_addr(addr){}
         InetAddr(const std::string& ip,uint16_t port);
     public:
