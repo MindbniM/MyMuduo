@@ -1,4 +1,5 @@
 #pragma once
+#include"TcpConnect.hpp"
 #include "EventLoop.hpp"
 #include"../fiber/Schedule.hpp"
 namespace MindbniM
@@ -33,8 +34,10 @@ namespace MindbniM
             m_loops[i]=std::make_shared<EventLoop>();
         }
         m_sche=std::make_shared<Schedule>(WorkNum,false);
-        std::function<void()> i=std::bind(&TcpServer::Accept,this);
-        m_root->insert(m_listen.Fd(),EPOLLET|EPOLLIN,std::bind(&TcpServer::AddWork,this,i));
+        std::function<void()> cb=std::bind(&TcpServer::Accept,this);
+        Channel::ptr p=std::make_shared<TcpConnect>(m_listen.Fd(),this);
+        p->SetReadCall(std::bind(&TcpServer::AddWork,this,cb));
+        m_root->insert(p);
     }
     void TcpServer::AddWork(Channel::func_t f)
     {
@@ -80,8 +83,8 @@ namespace MindbniM
                 return ;
             }
             int i=getnext();
-            m_loops[i]->insert(fd,EPOLLIN|EPOLLET);
-            
+            Channel::ptr p=std::make_shared<TcpConnect>(fd,this);
+            m_loops[i]->insert(p);
         }
     }
     int TcpServer::getnext()

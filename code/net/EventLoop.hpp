@@ -9,7 +9,7 @@ namespace MindbniM
     {
     public:
         using ptr=std::shared_ptr<EventLoop>;
-        bool insert(int fd,int events,Channel::func_t read=nullptr, Channel::func_t write =nullptr);
+        bool insert(Channel::ptr c);
         bool erase(int fd);
         bool mod(int fd,int events,Channel::func_t read=nullptr, Channel::func_t write =nullptr);
         void Loop(int timeout=-1);
@@ -18,20 +18,20 @@ namespace MindbniM
         std::atomic<bool> m_run;
         Epoll m_epoll;
         std::unordered_map<int,Channel::ptr> m_Channels;        
+        std::mutex m_mutex;
     };
-    bool EventLoop::insert(int fd,int events,Channel::func_t read, Channel::func_t write)
+    bool EventLoop::insert(Channel::ptr c)
     {
-        if(m_Channels.count(fd)) return false;
-        m_epoll.AddFd(fd,events);
-        Channel::ptr c=std::make_shared<Channel>(fd,events);
-        c->SetReadCall(read);
-        c->SetWriteCall(write);
-        m_Channels[fd]=c;
+        if(m_Channels.count(c->Fd())) return false;
+        std::lock_guard<std::mutex> g(m_mutex);
+        m_epoll.AddFd(c->Fd(),c->Events());
+        m_Channels[c->Fd()]=c;
         return true;
     }
     bool EventLoop::erase(int fd)
     {
         if(!m_Channels.count(fd))    return false;
+        std::lock_guard<std::mutex> g(m_mutex);
         m_epoll.DelFd(fd);
         m_Channels.erase(fd);
         return true;
@@ -39,6 +39,7 @@ namespace MindbniM
     bool EventLoop::mod(int fd,int events,Channel::func_t read, Channel::func_t write )
     {
         if(!m_Channels.count(fd)) return false;
+        std::lock_guard<std::mutex> g(m_mutex);
         m_epoll.ModFd(fd,events);
         if(read!=nullptr)m_Channels[fd]->SetReadCall(read);
         if(write!=nullptr)m_Channels[fd]->SetWriteCall(write);
@@ -50,7 +51,7 @@ namespace MindbniM
     }
     void EventLoop::Loop(int timeout)
     {
-       m_run=true;
+        m_run=true;
         while(m_run)
         {
             int n=m_epoll.Wait(timeout);

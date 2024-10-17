@@ -9,22 +9,25 @@ namespace MindbniM
     class Socket : public noncopyable
     {
     public:
-        explicit Socket(int fd):m_fd(fd){}
-        ~Socket();
+        explicit Socket(int fd=-1):m_fd(fd){}
+        virtual ~Socket();
         void SetFd(int fd){m_fd=fd;}
         int Fd() const {return m_fd;}
         void SetNoBlock(bool on);
     protected:
-        int m_fd;
+        int m_fd=-1;
     };
-    class TcpSocket: public Socket
+    class TcpSocket
     {
     public:
         TcpSocket(uint16_t port);
+        TcpSocket(int fd,const InetAddr& addr):m_fd(fd),m_addr(addr)
+        {}
 
         int BindAddr();
         void Listen();
         int Accept(InetAddr& peer,int& err);
+        int Send(const std::string& str);
 
         //设置地址复用
         void SetReuseAddr(bool on);
@@ -33,14 +36,18 @@ namespace MindbniM
         //设置活跃连接
         void SetKeepAlive(bool on);
         //设置非阻塞
+        int Fd() const {return m_fd;}
+        void SetNoBlock(bool on);
     private:
+        int m_fd=-1;
         InetAddr m_addr;
     };
     Socket::~Socket()
     {
+        if(m_fd>0)
         close(m_fd);
     }
-    TcpSocket::TcpSocket(uint16_t port):Socket(-1),m_addr(port)
+    TcpSocket::TcpSocket(uint16_t port):m_addr(port)
     {
         m_fd=socket(AF_INET,SOCK_STREAM,0);
         SetReuseAddr(true);
@@ -100,6 +107,14 @@ namespace MindbniM
         ::setsockopt(m_fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
     }
     void Socket::SetNoBlock(bool on)
+    {
+        int flags=0;
+        flags=fcntl(m_fd,F_GETFL,0);
+        if(flags<0) return;
+        flags|=O_NONBLOCK;
+        fcntl(m_fd,F_SETFL,flags);
+    }
+    void TcpSocket::SetNoBlock(bool on)
     {
         int flags=0;
         flags=fcntl(m_fd,F_GETFL,0);
