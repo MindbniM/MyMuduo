@@ -5,6 +5,7 @@
 #include<condition_variable>
 #include<vector>
 #include<atomic>
+#include<functional>
 namespace MindbniM
 {
     using task=std::function<void()>;
