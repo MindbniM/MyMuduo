@@ -1,6 +1,7 @@
 #pragma once
 #include"InetAddr.hpp"
 #include<netinet/tcp.h>
+#include"../buff/buffer.hpp"
 #include<unistd.h>
 #include<fcntl.h>
 #include"../base/nocopyable.hpp"
@@ -13,21 +14,22 @@ namespace MindbniM
         virtual ~Socket();
         void SetFd(int fd){m_fd=fd;}
         int Fd() const {return m_fd;}
-        void SetNoBlock(bool on);
+        void SetNoBlock();
     protected:
         int m_fd=-1;
     };
-    class TcpSocket
+    class TcpSocket :public Socket
     {
     public:
         TcpSocket(uint16_t port);
-        TcpSocket(int fd,const InetAddr& addr):m_fd(fd),m_addr(addr)
+        TcpSocket(int fd,const InetAddr& addr):Socket(fd),m_addr(addr)
         {}
 
         int BindAddr();
         void Listen();
         int Accept(InetAddr& peer,int& err);
-        int Send(const std::string& str);
+        int Send(const std::string& str,int&err);
+        int Recv(std::vector<char>& out,int& err);
 
         //设置地址复用
         void SetReuseAddr(bool on);
@@ -35,13 +37,24 @@ namespace MindbniM
         void SetTcpNoDelay(bool on);
         //设置活跃连接
         void SetKeepAlive(bool on);
-        //设置非阻塞
-        int Fd() const {return m_fd;}
-        void SetNoBlock(bool on);
     private:
-        int m_fd=-1;
         InetAddr m_addr;
     };
+    int TcpSocket::Send(const std::string& str,int&err)
+    {
+        int n=send(m_fd,str.c_str(),str.size(),MSG_NOSIGNAL);
+        err=errno;
+        return n;
+    }
+    int TcpSocket::Recv(std::vector<char>& out,int& err)
+    {
+        char buff[1024]={0};
+        int n=recv(m_fd,buff,sizeof(buff)-1,0);
+        std::vector<char> v(buff,buff+n);
+        out.swap(v);
+        err=errno;
+        return n;
+    }
     Socket::~Socket()
     {
         if(m_fd>0)
@@ -106,15 +119,7 @@ namespace MindbniM
         int optval = on ? 1 : 0;
         ::setsockopt(m_fd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
     }
-    void Socket::SetNoBlock(bool on)
-    {
-        int flags=0;
-        flags=fcntl(m_fd,F_GETFL,0);
-        if(flags<0) return;
-        flags|=O_NONBLOCK;
-        fcntl(m_fd,F_SETFL,flags);
-    }
-    void TcpSocket::SetNoBlock(bool on)
+    void Socket::SetNoBlock()
     {
         int flags=0;
         flags=fcntl(m_fd,F_GETFL,0);

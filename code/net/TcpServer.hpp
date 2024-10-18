@@ -7,35 +7,40 @@ namespace MindbniM
     class TcpServer
     {
     public:
+        using CallBack=std::function<void(TcpConnect::ptr)>;
         TcpServer(uint16_t port,int PollNum=2,int WorkNum=2);
         void start(int timeout=-1);
         void stop();
+        void SetAcceptCallBack(CallBack cb){_AcceptCallBack=cb;}
+        void SetMessageCallBack(CallBack cb){_MessageCallBack=cb;}
         ~TcpServer();
     private:
         void AddWork(Channel::func_t);
-        void Accept();
-        int getnext();
+        void AcceptCall(Channel::ptr con);
+        void ReadCall(Channel::ptr con);
+        void WriteCall(Channel::ptr con);
 
+        int getnext();
     private:
-        TcpSocket m_listen;
         EventLoop::ptr m_root;
         std::vector<EventLoop::ptr> m_loops;
         std::vector<std::thread> m_loopthreads;
         int m_PollNum;
         Schedule::ptr m_sche;
+
+        CallBack _AcceptCallBack;
+        CallBack _MessageCallBack;
     };
-    TcpServer::TcpServer(uint16_t port,int PollNum,int WorkNum):m_listen(port),m_PollNum(PollNum),m_loops(PollNum),m_loopthreads(PollNum)
+    TcpServer::TcpServer(uint16_t port,int PollNum,int WorkNum):m_PollNum(PollNum),m_loops(PollNum),m_loopthreads(PollNum)
     {
-        m_listen.BindAddr();
-        m_listen.Listen();
         m_root=std::make_shared<EventLoop>();
         for(int i=0;i<PollNum;i++)
         {
             m_loops[i]=std::make_shared<EventLoop>();
         }
         m_sche=std::make_shared<Schedule>(WorkNum,false);
-        std::function<void()> cb=std::bind(&TcpServer::Accept,this);
-        Channel::ptr p=std::make_shared<TcpConnect>(m_listen.Fd(),this);
+        Channel::ptr p=std::make_shared<TcpConnect>(port,m_root.get());
+        std::function<void()> cb=std::bind(&TcpServer::AcceptCall,this,p);
         p->SetReadCall(std::bind(&TcpServer::AddWork,this,cb));
         m_root->insert(p);
     }
@@ -50,6 +55,8 @@ namespace MindbniM
         {
             m_loopthreads[i]=std::thread(&EventLoop::Loop,m_loops[i].get(),timout);
         }
+        m_sche->start();
+        m_root->Loop(timout);
     }
     void TcpServer::stop()
     {
@@ -63,14 +70,14 @@ namespace MindbniM
             m_loopthreads[i].join();
         }
     }
-    void TcpServer::Accept()
+    void TcpServer::AcceptCall(Channel::ptr p)
     {
         int err;
         InetAddr peer;
         int fd;
         while(1)
         {
-            fd=m_listen.Accept(peer,err);
+            fd=std::static_pointer_cast<TcpConnect>(p)->Accept(peer,err);
             if(fd<0)
             {
                 if((err&EAGAIN)||(err&EWOULDBLOCK))
@@ -83,9 +90,49 @@ namespace MindbniM
                 return ;
             }
             int i=getnext();
-            Channel::ptr p=std::make_shared<TcpConnect>(fd,this);
+            Channel::ptr newConnect=std::make_shared<TcpConnect>(fd,peer,m_loops[i].get());
+            std::function<void()> cb=std::bind(&TcpServer::ReadCall,this,newConnect);
+            newConnect->SetReadCall(std::bind(&TcpServer::AddWork,this,cb));
+            cb=std::bind(&TcpServer::WriteCall,this,newConnect);
+            newConnect->SetWriteCall(std::bind(&TcpServer::AddWork,this,cb));
             m_loops[i]->insert(p);
+            if(_AcceptCallBack) _AcceptCallBack(std::static_pointer_cast<TcpConnect>(newConnect));
         }
+    }
+    void TcpServer::ReadCall(Channel::ptr con)
+    {
+        int n=std::static_pointer_cast<TcpConnect>(con)->Recv();
+        if(n==0)
+        {
+            con->Root()->erase(con->Fd());
+            return ;
+        }
+        if(_MessageCallBack) _MessageCallBack(std::static_pointer_cast<TcpConnect>(con));
+        int err;
+        n=std::static_pointer_cast<TcpConnect>(con)->SendTO(err);
+        if(n<0&&((err&EAGAIN)||(err&EWOULDBLOCK)))
+        {
+            con->SetEventWrite();
+            con->Root()->mod(con->Fd(),con->Events());
+            LOG_ROOT_DEBUG<<"fd:"<<con->Fd()<<" add EPOLLOUT";
+        }
+    }
+    void TcpServer::WriteCall(Channel::ptr con)
+    {
+        int err;
+        int n=std::static_pointer_cast<TcpConnect>(con)->SendTO(err);
+        if(n==0)
+        {
+            con->Root()->erase(con->Fd());
+            return ;
+        }
+        else if(n>0&&con->isWrite())
+        {
+            con->ReEvents();
+            con->SetEventRead();
+            con->Root()->mod(con->Fd(),con->Events());
+        }
+        
     }
     int TcpServer::getnext()
     {

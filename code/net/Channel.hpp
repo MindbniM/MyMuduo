@@ -21,9 +21,11 @@ namespace MindbniM
         void SetEventWrite(){ m_events |=EPOLLOUT;}
         void SetReadCall(func_t cb){_ReadCall=std::move(cb);}
         void SetWriteCall(func_t cb){_WriteCall=std::move(cb);}
+        void ReEvents(){m_events=0;}
 
 
-        int Fd()const {return m_fd.Fd();}
+        virtual int Fd()const {return m_fd.Fd();}
+        EventLoop* Root(){return m_root;}
         int Events()const {return m_events;}
         bool isRead()const {return m_events&EPOLLIN;}
         bool isWrite()const {return m_events&EPOLLOUT;}
