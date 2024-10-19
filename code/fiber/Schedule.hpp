@@ -127,7 +127,7 @@ namespace MindbniM
     }
     void Schedule::start()
     {
-        LOG_ROOT_DEBUG<<"Schedule 启动";
+        LOG_ROOT_INFO<<"Schedule 启动";
         {
             std::lock_guard<std::mutex> g(m_mutex);
             if(m_stop)
@@ -139,7 +139,6 @@ namespace MindbniM
             for(int i=0;i<m_threadCount;i++)
             {
                 m_threads[i]=std::thread(std::bind(&Schedule::run,this));
-                LOG_ROOT_DEBUG<<"start";
             }
 
         }
@@ -151,7 +150,7 @@ namespace MindbniM
     }
     void Schedule::run()
     {
-        LOG_ROOT_DEBUG<<"线程"<<pthread_self()<<" start";
+        LOG_ROOT_DEBUG<<"工作线程"<<pthread_self()<<" 启动";
         SetThis();
         if(pthread_self()!=m_rootId)
         {
@@ -160,7 +159,6 @@ namespace MindbniM
         ScheduleTask task;
         while(1)
         {
-            std::cout<<1<<std::endl;
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
                 if(pthread_self()==m_rootId&&m_task.empty())
@@ -168,9 +166,14 @@ namespace MindbniM
                     lock.unlock();
                     t_thread_fiber->swapIn();
                 }
-                ++m_idleThreadCount;
-                m_cond.wait(lock,[this]{return !m_task.empty()||m_stop;});
-                --m_idleThreadCount;
+                while(m_task.empty()&&!m_stop)
+                {
+                    ++m_idleThreadCount;
+                    LOG_ROOT_DEBUG<<"线程"<<pthread_self()<<"wait";
+                    m_cond.wait(lock);
+                    LOG_ROOT_DEBUG<<"线程"<<pthread_self()<<"work";
+                    --m_idleThreadCount;
+                }
                 if(m_task.empty()&&m_stop)
                 {
                     break;
@@ -190,6 +193,7 @@ namespace MindbniM
                 {
                     LOG_ROOT_DEBUG<<"切换到任务协程";
                     task.fiber->swapIn();
+                    LOG_ROOT_DEBUG<<"切换回调度协程";
                 }
                 task.reset();
                 --m_activeThreadCount;
