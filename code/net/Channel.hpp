@@ -21,6 +21,7 @@ namespace MindbniM
         void SetEventWrite(){ m_events |=EPOLLOUT;}
         void SetReadCall(func_t cb){_ReadCall=std::move(cb);}
         void SetWriteCall(func_t cb){_WriteCall=std::move(cb);}
+        void SetEvents(int events){m_events=events;}
         void ReEvents(){m_events=0;}
 
 

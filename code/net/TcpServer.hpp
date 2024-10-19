@@ -13,7 +13,6 @@ namespace MindbniM
         void stop();
         void SetAcceptCallBack(CallBack cb){_AcceptCallBack=cb;}
         void SetMessageCallBack(CallBack cb){_MessageCallBack=cb;}
-        ~TcpServer();
     private:
         void AddWork(Channel::func_t);
         void AcceptCall(Channel::ptr con);
@@ -54,8 +53,10 @@ namespace MindbniM
         for(int i=0;i<m_PollNum;i++)
         {
             m_loopthreads[i]=std::thread(&EventLoop::Loop,m_loops[i].get(),timout);
+            LOG_ROOT_INFO<<"id: "<<i<<" 子Reactor 启动";
         }
         m_sche->start();
+        LOG_ROOT_INFO<<"主Reactor 启动";
         m_root->Loop(timout);
     }
     void TcpServer::stop()
@@ -90,12 +91,14 @@ namespace MindbniM
                 return ;
             }
             int i=getnext();
+            LOG_ROOT_DEBUG<<"新连接 fd: "<<fd<<"  ip: "<<peer.Addr()<<" 分配给子Reactor id:"<<i;
             Channel::ptr newConnect=std::make_shared<TcpConnect>(fd,peer,m_loops[i].get());
             std::function<void()> cb=std::bind(&TcpServer::ReadCall,this,newConnect);
             newConnect->SetReadCall(std::bind(&TcpServer::AddWork,this,cb));
             cb=std::bind(&TcpServer::WriteCall,this,newConnect);
             newConnect->SetWriteCall(std::bind(&TcpServer::AddWork,this,cb));
-            m_loops[i]->insert(p);
+            newConnect->SetEventRead();
+            m_loops[i]->insert(newConnect);
             if(_AcceptCallBack) _AcceptCallBack(std::static_pointer_cast<TcpConnect>(newConnect));
         }
     }
@@ -104,6 +107,7 @@ namespace MindbniM
         int n=std::static_pointer_cast<TcpConnect>(con)->Recv();
         if(n==0)
         {
+            LOG_ROOT_DEBUG<<"连接 fd:"<<con->Fd()<<" 可能已关闭";
             con->Root()->erase(con->Fd());
             return ;
         }
@@ -123,6 +127,7 @@ namespace MindbniM
         int n=std::static_pointer_cast<TcpConnect>(con)->SendTO(err);
         if(n==0)
         {
+            LOG_ROOT_DEBUG<<"连接 fd:"<<con->Fd()<<" 可能已关闭";
             con->Root()->erase(con->Fd());
             return ;
         }

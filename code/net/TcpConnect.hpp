@@ -5,7 +5,8 @@ namespace MindbniM
     class TcpConnect : public Channel
     {
     public:
-        TcpConnect(int fd,const InetAddr& addr,EventLoop* root,int BuffSize=1024):Channel(root,-1,true,EPOLLIN),m_sock(fd,addr),_Out(BuffSize),_In(BuffSize)
+        using ptr=std::shared_ptr<TcpConnect>;
+        TcpConnect(int fd,const InetAddr& addr,EventLoop* root,int BuffSize=1024):Channel(root,-1,true,EPOLLIN|EPOLLET),m_sock(fd,addr),_Out(BuffSize),_In(BuffSize)
         {
             m_sock.SetNoBlock();
         }
@@ -19,6 +20,7 @@ namespace MindbniM
         int SendTO(int& err);
         int Accept(InetAddr& peer,int& err);
         int Recv();
+        std::string Body(){return _In.Retrieve_AllToStr();}
     public:
     private:
         TcpSocket m_sock;
@@ -30,7 +32,7 @@ namespace MindbniM
         int n=0;
         while(1)
         {
-            n=_In.WriteFd(m_sock.Fd(),&err);          
+            n=_Out.WriteFd(m_sock.Fd(),&err);          
             if(n<0)
             {
                 if((err&EAGAIN)||(err&EWOULDBLOCK)) break;
@@ -57,7 +59,7 @@ namespace MindbniM
         int n=0;
         while(1)
         {
-            n=_Out.ReadFd(m_sock.Fd(),&err);
+            n=_In.ReadFd(m_sock.Fd(),&err);
             if(n<0)
             {
                 if((err&EAGAIN)||(err&EWOULDBLOCK)) break;
