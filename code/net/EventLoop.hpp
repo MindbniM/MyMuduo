@@ -32,7 +32,6 @@ namespace MindbniM
         if(c->Events()&EPOLLET) ev+=" EPOLLET ";
         if(c->Events()&EPOLLIN) ev+=" EPOLLIN ";
         if(c->Events()&EPOLLOUT) ev+=" EPOLLOUT ";
-        std::cout<<std::static_pointer_cast<TcpConnect>(c)->Fd();
         LOG_ROOT_DEBUG<<"fd: "<<c->Fd()<<" 已添加 Events: "<<ev;
         return true;
     }

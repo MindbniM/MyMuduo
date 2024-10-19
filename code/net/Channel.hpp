@@ -13,7 +13,11 @@ namespace MindbniM
         using ptr=std::shared_ptr<Channel>;
         using func_t=std::function<void()>;
 
-        Channel(EventLoop* root,int fd,bool ET=false,int events=0):m_fd(fd),m_events(events),m_root(root)
+        Channel(EventLoop* root,int fd,bool ET=false,int events=0):m_fd(new Socket(fd)),m_events(events),m_root(root)
+        {
+            if(ET) m_events|=EPOLLET;
+        }
+        Channel(EventLoop* root,Socket::ptr fd,bool ET=false,int events=0):m_fd(fd),m_events(events),m_root(root)
         {
             if(ET) m_events|=EPOLLET;
         }
@@ -25,7 +29,7 @@ namespace MindbniM
         void ReEvents(){m_events=0;}
 
 
-        virtual int Fd()const {return m_fd.Fd();}
+        int Fd()const {return m_fd->Fd();}
         EventLoop* Root(){return m_root;}
         int Events()const {return m_events;}
         bool isRead()const {return m_events&EPOLLIN;}
@@ -37,8 +41,7 @@ namespace MindbniM
     protected:
         EventLoop* m_root;
         int m_events;
-    private:
-        Socket m_fd;
+        Socket::ptr  m_fd;
 
     };
 }

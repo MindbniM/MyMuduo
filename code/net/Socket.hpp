@@ -10,6 +10,7 @@ namespace MindbniM
     class Socket : public noncopyable
     {
     public:
+        using ptr=std::shared_ptr<Socket>;
         explicit Socket(int fd=-1):m_fd(fd){}
         virtual ~Socket();
         void SetFd(int fd){m_fd=fd;}

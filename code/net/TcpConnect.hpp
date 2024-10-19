@@ -6,24 +6,31 @@ namespace MindbniM
     {
     public:
         using ptr=std::shared_ptr<TcpConnect>;
-        TcpConnect(int fd,const InetAddr& addr,EventLoop* root,int BuffSize=1024):Channel(root,-1,true,EPOLLIN|EPOLLET),m_sock(fd,addr),_Out(BuffSize),_In(BuffSize)
+        TcpConnect(int fd,const InetAddr& addr,EventLoop* root,int BuffSize=1024):Channel(root,std::make_shared<TcpSocket>(fd,addr),true,EPOLLIN|EPOLLET),_Out(BuffSize),_In(BuffSize)
         {
-            m_sock.SetNoBlock();
+            m_fd->SetNoBlock();
         }
-        TcpConnect(uint16_t port,EventLoop* root):Channel(root,-1,true,EPOLLIN),m_sock(port),_Out(0),_In(0)
+        TcpConnect(uint16_t port,EventLoop* root):Channel(root,std::make_shared<TcpSocket>(port),true,EPOLLIN),_Out(0),_In(0)
         {
-            m_sock.BindAddr();
-            m_sock.Listen();
+            m_fd->SetNoBlock();
+            std::static_pointer_cast<TcpSocket>(m_fd)->BindAddr();
+            std::static_pointer_cast<TcpSocket>(m_fd)->Listen();
         }
-        virtual int Fd()const {return m_sock.Fd();}
         void Send(const std::string str);
         int SendTO(int& err);
         int Accept(InetAddr& peer,int& err);
         int Recv();
-        std::string Body(){return _In.Retrieve_AllToStr();}
+        //读取全部数据+清空缓冲区
+        std::string ReAlltoBody(){return _In.Retrieve_AllToStr();}
+        //不清空缓冲区读取全部数据
+        std::string AlltoBody(){return {_In.Peek(),_In.Read_ableBytes()};}
+        //移动读取缓冲区的下标len个,表示已经读取len个字符
+        void ReadLen(size_t len){return _In.Retrieve(len);}
+        size_t InBuffSize(){return _In.Read_ableBytes();}
+        size_t OutBuffSize(){return _Out.Read_ableBytes();}
+        
     public:
     private:
-        TcpSocket m_sock;
         Buffer _Out;
         Buffer _In;
     };
@@ -32,7 +39,7 @@ namespace MindbniM
         int n=0;
         while(1)
         {
-            n=_Out.WriteFd(m_sock.Fd(),&err);          
+            n=_Out.WriteFd(m_fd->Fd(),&err);          
             if(n<0)
             {
                 if((err&EAGAIN)||(err&EWOULDBLOCK)) break;
@@ -51,7 +58,7 @@ namespace MindbniM
     }
     int TcpConnect::Accept(InetAddr& peer,int& err)
     {
-        return m_sock.Accept(peer,err);
+        return std::static_pointer_cast<TcpSocket>(m_fd)->Accept(peer,err);
     }
     int TcpConnect::Recv()
     {
@@ -59,7 +66,7 @@ namespace MindbniM
         int n=0;
         while(1)
         {
-            n=_In.ReadFd(m_sock.Fd(),&err);
+            n=_In.ReadFd(m_fd->Fd(),&err);
             if(n<0)
             {
                 if((err&EAGAIN)||(err&EWOULDBLOCK)) break;
