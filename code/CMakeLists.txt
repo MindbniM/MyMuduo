@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.20)
-project(WebServer)
-include_directories(${PROJECT_SOURCE_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
-add_executable(test test.cc)
-target_link_libraries(test pthread)
