@@ -10,11 +10,15 @@ namespace MindbniM
         {
             m_fd->SetNoBlock();
         }
-        TcpConnect(uint16_t port,EventLoop* root):Channel(root,std::make_shared<TcpSocket>(port),true,EPOLLIN),_Out(0),_In(0)
+        TcpConnect(uint16_t port,EventLoop* root):Channel(root,std::make_shared<TcpSocket>(port),true,EPOLLIN|EPOLLET),_Out(0),_In(0)
         {
             m_fd->SetNoBlock();
             std::static_pointer_cast<TcpSocket>(m_fd)->BindAddr();
             std::static_pointer_cast<TcpSocket>(m_fd)->Listen();
+        }
+        TcpConnect(const std::string& ip,uint16_t port,EventLoop* root,int BuffSize=1024):Channel(root,std::make_shared<TcpSocket>(InetAddr(ip,port)),true,EPOLLIN|EPOLLET),_Out(BuffSize),_In(BuffSize)
+        {
+            m_fd->SetNoBlock();
         }
         void Send(const std::string str);
         int SendTO(int& err);
@@ -24,7 +28,7 @@ namespace MindbniM
         std::string ReAlltoBody(){return _In.Retrieve_AllToStr();}
         //不清空缓冲区读取全部数据
         std::string AlltoBody(){return {_In.Peek(),_In.Read_ableBytes()};}
-        //移动读取缓冲区的下标len个,表示已经读取len个字符
+        //表示已经读取len个字符, 移动输出缓冲区
         void ReadLen(size_t len){return _In.Retrieve(len);}
         size_t InBuffSize(){return _In.Read_ableBytes();}
         size_t OutBuffSize(){return _Out.Read_ableBytes();}
@@ -54,7 +58,7 @@ namespace MindbniM
     }
     void TcpConnect::Send(const std::string str)
     {
-        _In.Append(str);
+        _Out.Append(str);
     }
     int TcpConnect::Accept(InetAddr& peer,int& err)
     {

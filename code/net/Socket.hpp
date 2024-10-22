@@ -25,6 +25,7 @@ namespace MindbniM
         TcpSocket(uint16_t port);
         TcpSocket(int fd,const InetAddr& addr):Socket(fd),m_addr(addr)
         {}
+        TcpSocket(const InetAddr& addr);
 
         int BindAddr();
         void Listen();
@@ -60,6 +61,24 @@ namespace MindbniM
     {
         if(m_fd>0)
         close(m_fd);
+    }
+    TcpSocket::TcpSocket(const InetAddr& addr):m_addr(addr)
+    {
+        m_fd=socket(AF_INET,SOCK_STREAM,0);
+        if(m_fd<0)
+        {
+            LOG_ROOT_FATAL<<"TcpSocket create error";
+            exit(-1);
+        }
+        LOG_ROOT_INFO<<"TcpSocket create success fd:"<<m_fd;
+        int n=connect(m_fd,(struct sockaddr*)m_addr.GetSockAddr(),sizeof(sockaddr_in));
+        if(n<0)
+        {
+            LOG_ROOT_FATAL<<"Connect error";
+            close(m_fd);
+            exit(-1);
+        }
+        LOG_ROOT_INFO<<"TcpConnect success  server: "<<m_addr.Addr();
     }
     TcpSocket::TcpSocket(uint16_t port):m_addr(port)
     {
