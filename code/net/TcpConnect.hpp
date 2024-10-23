@@ -28,6 +28,7 @@ namespace MindbniM
         std::string ReAlltoBody(){return _In.Retrieve_AllToStr();}
         //不清空缓冲区读取全部数据
         std::string AlltoBody(){return {_In.Peek(),_In.Read_ableBytes()};}
+        std::string _AlltoBody(){return std::string(_Out.Peek(),_Out.Read_ableBytes());}
         //表示已经读取len个字符, 移动输出缓冲区
         void ReadLen(size_t len){return _In.Retrieve(len);}
         size_t InBuffSize(){return _In.Read_ableBytes();}
@@ -40,20 +41,7 @@ namespace MindbniM
     };
     int TcpConnect::SendTO(int& err)
     {
-        int n=0;
-        while(1)
-        {
-            n=_Out.WriteFd(m_fd->Fd(),&err);          
-            if(n<0)
-            {
-                if((err&EAGAIN)||(err&EWOULDBLOCK)) break;
-                else 
-                {
-                    return n;
-                }
-            }
-            if(n==0) return n;
-        }
+        int n=_Out.WriteFd(m_fd->Fd(),&err);          
         return n;
     }
     void TcpConnect::Send(const std::string str)

@@ -131,10 +131,11 @@ namespace MindbniM
             con->Root()->erase(con->Fd());
             return ;
         }
-        else if(n>0&&con->isWrite())
+        else if(n<0&&((err&EAGAIN)||(err&EWOULDBLOCK)))
         {
             con->ReEvents();
             con->SetEventRead();
+            con->SetEventWrite();
             con->Root()->mod(con->Fd(),con->Events());
         }
         
