@@ -24,7 +24,7 @@ namespace MindbniM
         size_t Write_ableBytes() const {return _buffer.size()-_wPos;}
 
         // 返回当前可读字节数
-        size_t Read_ableBytes() const{ return _buffer.size()-_rPos;}
+        size_t Read_ableBytes() const{ return _wPos-_rPos;}
 
         // 返回当前可插入字节数（即读位置之前的空间）
         size_t Insert_ableBytes() const{return _rPos;}
