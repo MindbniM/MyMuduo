@@ -11,6 +11,7 @@ namespace MindbniM
         TcpClient(const std::string& ip,uint16_t port,int WriteCall=2);
         void SetMessageCallBack(CallBack cb){_MessageCallBack=std::move(cb);}
         void Send(const std::string& str);
+        ~TcpClient();
 
     private:
         void WriteCall(Channel::ptr con);
@@ -18,6 +19,7 @@ namespace MindbniM
         void AddWork(Channel::func_t);
     private:
         EventLoop::ptr m_loop;
+        std::thread m_loopt;
         TcpConnect::ptr m_sock;
         CallBack _MessageCallBack;
         Schedule::ptr m_sche;
@@ -30,11 +32,27 @@ namespace MindbniM
         cb=std::bind(&TcpClient::WriteCall,this,m_sock);
         m_sock->SetWriteCall(std::bind(&TcpClient::AddWork,this,cb));
         m_loop->insert(m_sock);
-        m_loop->Loop();
+        m_loopt=std::thread(&EventLoop::Loop,m_loop.get(),-1);
+        m_sche->start();
     }
     void TcpClient::Send(const std::string& str)
     {
         m_sock->Send(str);
+        int err;
+        int n=m_sock->SendTO(err);
+        if(n==0)
+        {
+            LOG_ROOT_DEBUG<<"服务端可能已关闭";
+            return ;
+        }
+        else if(n<0&&((err&EAGAIN)||(err&EWOULDBLOCK)))
+        {
+            m_sock->ReEvents();
+            m_sock->SetEventRead();
+            m_sock->SetEventWrite();
+            m_loop->mod(m_sock->Fd(),m_sock->Events());
+        }
+        
     }
     void TcpClient::AddWork(Channel::func_t cb)
     {
@@ -70,12 +88,18 @@ namespace MindbniM
             con->Root()->erase(con->Fd());
             return ;
         }
-        else if(n>0&&con->isWrite())
+        else if(n<0&&(err&EAGAIN)||(err&EWOULDBLOCK))
         {
             con->ReEvents();
             con->SetEventRead();
+            con->SetEventWrite();
             con->Root()->mod(con->Fd(),con->Events());
         }
         
+    }
+    TcpClient::~TcpClient()
+    {
+        m_sche->stop();
+        m_loopt.join();
     }
 }
